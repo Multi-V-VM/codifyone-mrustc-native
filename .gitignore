@@ -26,6 +26,10 @@
 
 /output
 /output-*
+/hello.wasm
+/hello.wasm.c
+/hello.wasm_cmd.txt
+/wasi-shims/*.o
 
 /vsproject/Win32
 /vsproject/x64

@@ -441,6 +441,7 @@ class CHandler_Link:
             lex.getTokenCheck(TOK_PAREN_OPEN);
             std::string lib_name;
             bool emit = true;
+            bool wasm_import = false;
             AST::ExternBlock::Link  link;
 
             while(lex.lookahead(0) != TOK_PAREN_CLOSE)
@@ -470,15 +471,20 @@ class CHandler_Link:
                         ERROR(sp, E0000, "Empty `modifiers` on extern block #[link]");
                     // TODO: save and use the `modifiers` value
                 }
+                else if( key == "wasm_import_module" ) {
+                    lex.getTokenCheck(TOK_EQUAL);
+                    (void)lex.getTokenCheck(TOK_STRING).str();
+                    wasm_import = true;
+                }
                 else {
                     TODO(sp, "Unknown attribute `#[link(" << key << ")]`");
                 }
                 if( !lex.getTokenIf(TOK_COMMA) )
                     break ;
             }
-            if(link.lib_name == "")
+            if(link.lib_name == "" && !wasm_import)
                 ERROR(sp, E0000, "No name in `#[link]`");
-            if( emit )
+            if( emit && !wasm_import )
             {
                 b->m_libraries.push_back(std::move(link));
             }
