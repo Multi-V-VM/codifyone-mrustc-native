@@ -39,3 +39,9 @@ MRUSTC_TARGET_VER=1.90 ./bin/minicargo \
 `output-wasip1` is intentionally not versioned. Populate it with the matching
 Rust core/alloc/std artifacts before compiling applications. The CodifyOne app
 ships the validated runtime artifacts separately.
+
+The app-facing dispatcher lives in `codifyone/dispatcher.cpp`. It validates
+ordinary CLI errors before entering mrustc/minicargo because this Wasmi build
+uses abort-on-exception semantics: an uncaught C++ error would otherwise be
+reported as a WebAssembly `unreachable` trap. Relink a prepared WASIp1 object
+tree with `scripts/link-codifyone-toolchain.sh`.
