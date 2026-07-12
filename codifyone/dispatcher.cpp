@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <iostream>
 #include <string>
 #include <sys/stat.h>
@@ -52,12 +53,24 @@ int main(int argc, char** argv) {
 
     const char* spec = std::getenv("CODIFYONE_RUST_TARGET_SPEC");
     const char* libdir = std::getenv("CODIFYONE_RUST_LIBDIR");
+    std::deque<std::string> owned_arguments;
     if (tool == "rustc") {
         // mrustc assumes an input exists and aborts through C++ exception code
         // when invoked bare. Wasmi reports that abort as an `unreachable` trap.
         if (forwarded.size() == 1) {
             std::cerr << "usage: rustc [OPTIONS] INPUT\n";
             return 1;
+        }
+        // WASI preview1 has no process-wide chdir and libc getcwd() reports
+        // `/`. Make source and output paths explicit inside CodifyOne's memfs.
+        for (std::size_t i = 1; i < forwarded.size(); ++i) {
+            const bool output_value = i > 1 && std::strcmp(forwarded[i - 1], "-o") == 0;
+            const std::string value = forwarded[i];
+            const bool rust_source = value.size() >= 3 && value.substr(value.size() - 3) == ".rs";
+            if ((output_value || rust_source) && !value.empty() && value[0] != '/') {
+                owned_arguments.push_back("/home/workspace/" + value);
+                forwarded[i] = const_cast<char*>(owned_arguments.back().c_str());
+            }
         }
         if (spec && !has_arg(static_cast<int>(forwarded.size()), forwarded.data(), "--target")) {
             forwarded.push_back(const_cast<char*>("--target"));
@@ -82,13 +95,28 @@ int main(int argc, char** argv) {
         }
         if (std::strcmp(forwarded[1], "build") == 0) {
             forwarded.erase(forwarded.begin() + 1);
-            if (forwarded.size() == 1) forwarded.push_back(const_cast<char*>("."));
+            if (forwarded.size() == 1) {
+                forwarded.push_back(const_cast<char*>("/home/workspace"));
+            }
+        }
+        if (forwarded.size() > 1 && forwarded[1][0] != '-') {
+            const std::string package = forwarded[1];
+            if (package == ".") {
+                forwarded[1] = const_cast<char*>("/home/workspace");
+            } else if (!package.empty() && package[0] != '/') {
+                owned_arguments.push_back("/home/workspace/" + package);
+                forwarded[1] = const_cast<char*>(owned_arguments.back().c_str());
+            }
         }
         // minicargo's missing-manifest path throws; validate the package before
         // entering it so a CLI mistake remains a normal nonzero exit.
         if (forwarded.size() > 1 && !is_directory(forwarded[1])) {
             std::cerr << "cargo: package path is not a directory: " << forwarded[1] << "\n";
             return 1;
+        }
+        if (!has_arg(static_cast<int>(forwarded.size()), forwarded.data(), "--output-dir")) {
+            forwarded.push_back(const_cast<char*>("--output-dir"));
+            forwarded.push_back(const_cast<char*>("/home/workspace/output"));
         }
         forwarded.push_back(const_cast<char*>("-j"));
         forwarded.push_back(const_cast<char*>("1"));

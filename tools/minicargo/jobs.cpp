@@ -24,9 +24,11 @@
 #ifdef _WIN32
 # include <Windows.h>
 #else
+# ifndef __wasi__
 extern "C" {
 # include <sys/wait.h>  // waitpid
 }
+# endif
 #endif
 
 void JobList::add_job(::std::unique_ptr<Job> job)
@@ -262,7 +264,13 @@ os_support::Process JobList::spawn(const RunnableJob& rjob)
 bool JobList::wait_one(bool block)
 {
     bool rv;
-#ifdef _WIN32
+#ifdef __wasi__
+    (void)block;
+    if (this->running_jobs.empty()) return true;
+    RunningJob rjob = ::std::move(this->running_jobs.front());
+    this->running_jobs.erase(this->running_jobs.begin());
+    rv = os_support::Process::handle_status(rjob.handle.m_handle);
+#elif defined(_WIN32)
     ::std::vector<HANDLE>   handles;
     for(const auto& j : this->running_jobs) {
         handles.push_back(j.handle.m_handle);

@@ -10,12 +10,27 @@
 #include <zlib.h>
 #include <fstream>
 #include <string.h>   // memcpy
+#include <cstdlib>
 #include <common.hpp>
 #include <algorithm>
 #include <iomanip>
 
 namespace HIR {
 namespace serialise {
+
+#ifdef __wasi__
+// The bundled WASI zlib is built with Z_SOLO, so it deliberately does not
+// install libc-backed allocation callbacks.  Supplying them here is required
+// before deflateInit/inflateInit; otherwise both return Z_STREAM_ERROR.
+static voidpf codifyone_zalloc(voidpf, uInt items, uInt size)
+{
+    return ::calloc(items, size);
+}
+static void codifyone_zfree(voidpf, voidpf address)
+{
+    ::free(address);
+}
+#endif
 
 class WriterInner
 {
@@ -98,6 +113,10 @@ WriterInner::WriterInner(const ::std::string& filename):
     m_zstream.zalloc = Z_NULL;
     m_zstream.zfree = Z_NULL;
     m_zstream.opaque = Z_NULL;
+#ifdef __wasi__
+    m_zstream.zalloc = codifyone_zalloc;
+    m_zstream.zfree = codifyone_zfree;
+#endif
 
     const int COMPRESSION_LEVEL = Z_BEST_COMPRESSION;
     int ret = deflateInit(&m_zstream, COMPRESSION_LEVEL);
@@ -286,6 +305,10 @@ ReaderInner::ReaderInner(const ::std::string& filename):
     m_zstream.zalloc = Z_NULL;
     m_zstream.zfree = Z_NULL;
     m_zstream.opaque = Z_NULL;
+#ifdef __wasi__
+    m_zstream.zalloc = codifyone_zalloc;
+    m_zstream.zfree = codifyone_zfree;
+#endif
 
     int ret = inflateInit(&m_zstream);
     if(ret != Z_OK)

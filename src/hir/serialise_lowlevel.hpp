@@ -454,7 +454,24 @@ public:
         }
         assert(key < m_objname_cache.size());
         //std::cout << key << " = " << m_objname_cache[key] << std::endl;
-        if( m_objname_cache[key] != name ) {
+        bool name_matches = m_objname_cache[key] == name;
+#ifdef __wasi__
+        // Metadata bundled by CodifyOne is produced by the native macOS
+        // bootstrap (libc++ ABI namespace __1), while wasi-sdk currently uses
+        // libc++ ABI namespace __2.  These type names describe the same wire
+        // object; accept that namespace-only difference.
+        if( !name_matches ) {
+            auto stored = m_objname_cache[key];
+            auto expected = ::std::string(name);
+            const auto stored_pos = stored.find("NSt3__1");
+            const auto expected_pos = expected.find("NSt3__2");
+            if( stored_pos != ::std::string::npos && expected_pos != ::std::string::npos ) {
+                stored.replace(stored_pos, 7, "NSt3__2");
+                name_matches = stored == expected;
+            }
+        }
+#endif
+        if( !name_matches ) {
             std::cerr << "Expecting OpenNamed(" << name << "), got OpenNamed(" << m_objname_cache[key] << ")" << std::endl;
             abort();
         }
@@ -479,4 +496,3 @@ public:
 
 }   // namespace serialise
 }   // namespace HIR
-

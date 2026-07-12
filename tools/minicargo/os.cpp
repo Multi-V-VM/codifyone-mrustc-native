@@ -27,8 +27,10 @@ extern "C" {
 # include <unistd.h>    // open/chdir/
 # include <sys/stat.h>  // mkdir?
 # include <fcntl.h>  // O_*
+# ifndef __wasi__
 # include <spawn.h> // posix_spawn
 # include <sys/wait.h>  // waitpid
+# endif
 # include <limits.h>    // PATH_MAX
 extern char **environ;
 }
@@ -38,6 +40,10 @@ extern char **environ;
 #endif
 #if defined(__FreeBSD__) || defined(__DragonFly__) || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME)) // NetBSD 8.0+
 # include <sys/sysctl.h>
+#endif
+
+#ifdef __wasi__
+extern int mrustc_main(int argc, char* argv[]);
 #endif
 
 namespace {
@@ -75,6 +81,32 @@ Process Process::spawn(
     bool capture_stderr/*=false*/
     )
 {
+#ifdef __wasi__
+    // CodifyOne links mrustc and minicargo into one WASIp1 command module.
+    // WASI preview1 has no subprocess facility, so execute compiler jobs in
+    // process and encode their result like a waitpid status.
+    const std::string executable = ::helpers::path(exe_name).basename();
+    if (executable != "mrustc" && executable != "mrustc.exe") {
+        ::std::cerr << "CodifyOne WASI minicargo cannot spawn " << exe_name << ::std::endl;
+        return Process { 127 << 8, -1 };
+    }
+    for (auto kv : env) {
+        setenv(kv.first, kv.second, 1);
+    }
+    auto raw_args = args.get_vec();
+    ::std::vector<char*> argv;
+    argv.reserve(raw_args.size() + 2);
+    argv.push_back(const_cast<char*>("mrustc"));
+    for (const auto* arg : raw_args) argv.push_back(const_cast<char*>(arg));
+    argv.push_back(nullptr);
+    if (print_command) {
+        ::std::cout << "> mrustc";
+        for (const auto& arg : raw_args) ::std::cout << " " << arg;
+        ::std::cout << ::std::endl;
+    }
+    const int result = mrustc_main(static_cast<int>(argv.size() - 1), argv.data());
+    return Process { result << 8, -1 };
+#else
     // Disabled: needs a bunch of work on other ends
     if(capture_stderr) {
         ::std::cerr << "TODO: Test and implement `capture_stderr`" << std::endl;
@@ -301,11 +333,14 @@ Process Process::spawn(
     }
     return Process { pid, stderr_streams[0] };
 #endif
+#endif // __wasi__
 }
 
 bool Process::wait()
 {
-    #ifdef _WIN32
+    #ifdef __wasi__
+    return handle_status(m_handle);
+    #elif defined(_WIN32)
     if( this->m_stderr ) {
         throw ::std::runtime_error("capture_stderr with an explicit wait");
     }
@@ -325,7 +360,13 @@ bool Process::wait()
 
 bool Process::handle_status(int status)
 {
-    #ifdef _WIN32
+    #ifdef __wasi__
+    if (status != 0) {
+        ::std::cerr << "Process exited with non-zero exit status " << (status >> 8) << ::std::endl;
+        return false;
+    }
+    return true;
+    #elif defined(_WIN32)
     if(status != 0)
     {
         auto dw_status = static_cast<DWORD>(status);
@@ -524,4 +565,3 @@ void argv_quote_windows(const std::string& arg, std::stringstream& cmdline)
 }
 #endif
 }
-

@@ -349,6 +349,16 @@ Token Lexer::getTokenInt()
         m_next_tokens.pop_back();
         return rv;
     }
+#ifdef __wasi__
+    // EOF is the normal terminator for the outer token stream.  The upstream
+    // lexer represents it with a C++ exception, but the compact CodifyOne
+    // WASI build intentionally has no C++ exception runtime: throwing here
+    // becomes a wasm `unreachable` trap before the local catch can run.
+    // Avoid the exception on the common token-boundary path.  Inner lexer
+    // routines still diagnose a truncated token in the usual way.
+    if( m_istream.peek() == EOF )
+        return Token(TOK_EOF);
+#endif
     try
     {
         Codepoint ch = this->getc();

@@ -32,4 +32,9 @@ find "$WASM_OBJECT_ROOT/.obj" "$WASM_OBJECT_ROOT/tools/minicargo/.obj" \
     -Wl,--max-memory=1073741824 -Wl,-z,stack-size=16777216 \
     -o "$OUTPUT"
 
+# The mrustc object tree is intentionally built with debug information for
+# diagnosis, but shipping those custom sections inflates the module from about
+# 11 MiB to over 100 MiB and slows interpreter startup considerably.
+"$WASI_SDK/bin/llvm-strip" --strip-debug "$OUTPUT"
+
 echo "linked $OUTPUT"
