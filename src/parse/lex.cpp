@@ -275,6 +275,19 @@ signed int Lexer::getSymbol()
 
         while( chars[ofs] && ch == chars[ofs] )
         {
+#ifdef __wasi__
+            // A source file is allowed to end immediately after a symbol
+            // (most commonly the final `}`).  Avoid using EndOfFile as local
+            // control flow because the compact WASI build has no C++ EH
+            // runtime and would turn the throw into `unreachable`.
+            if( m_istream.peek() == EOF ) {
+                ch = 0;
+                hit_eof = true;
+            }
+            else {
+                ch = this->getc();
+            }
+#else
             try {
                 ch = this->getc();
             }
@@ -283,6 +296,7 @@ signed int Lexer::getSymbol()
                 // Prevent `ungetc` if EOF was hit
                 hit_eof = true;
             }
+#endif
             ofs ++;
         }
         if( chars[ofs] == 0 )
