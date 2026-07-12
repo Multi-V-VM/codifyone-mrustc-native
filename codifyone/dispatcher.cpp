@@ -93,7 +93,8 @@ int main(int argc, char** argv) {
             std::cout << "cargo codifyone-minicargo 1.90 (wasm32-wasip1)\n";
             return 0;
         }
-        if (std::strcmp(forwarded[1], "build") == 0) {
+        if (std::strcmp(forwarded[1], "build") == 0
+            || std::strcmp(forwarded[1], "check") == 0) {
             forwarded.erase(forwarded.begin() + 1);
             if (forwarded.size() == 1) {
                 forwarded.push_back(const_cast<char*>("/home/workspace"));

@@ -9,9 +9,10 @@ BUILD_DIR=${BUILD_DIR:-/tmp/mrustc-wasi-build}
 OUTPUT=${OUTPUT:-$BUILD_DIR/rust-toolchain.wasm}
 CXX="$WASI_SDK/bin/clang++"
 AR="$WASI_SDK/bin/llvm-ar"
+WASI_CXX_INCLUDE="$WASI_SDK/share/wasi-sysroot/include/wasm32-wasip1/noeh/c++/v1"
 
 mkdir -p "$BUILD_DIR"
-"$CXX" -O2 -fno-exceptions -fno-rtti \
+"$CXX" -O2 -fno-exceptions -fno-rtti -I "$WASI_CXX_INCLUDE" \
     -c "$ROOT/codifyone/dispatcher.cpp" -o "$BUILD_DIR/dispatcher.o"
 
 rm -f "$BUILD_DIR/mrustc-all.a"

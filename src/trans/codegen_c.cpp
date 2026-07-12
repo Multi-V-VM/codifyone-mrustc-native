@@ -22,6 +22,18 @@
 #include "target_version.hpp"
 #include <string_view.hpp>
 
+#ifdef __wasi__
+extern "C" int codifyone_rust_codegen(
+    const char* command,
+    const char* source_path,
+    const void* source_data,
+    size_t source_len,
+    const char* response_path,
+    const void* response_data,
+    size_t response_len)
+    __attribute__((import_module("env"), import_name("codifyone_rust_codegen")));
+#endif
+
 namespace {
     struct FmtShell
     {
@@ -1290,9 +1302,11 @@ namespace {
                     else if( getenv("CC") ) {
                             args.push_back( getenv("CC") );
                     }
+#ifndef __wasi__
                     else if (system(("command -v " + Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" + " >/dev/null 2>&1").c_str()) == 0) {
                         args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
                     }
+#endif
                     else {
                         args.push_back("gcc");
                     }
@@ -1531,7 +1545,28 @@ namespace {
             }
             else
             {
+#ifdef __wasi__
+                // The compiler runs in an in-memory WASI filesystem, while
+                // CodifyOne's embedded clang runs in the iOS host process.
+                // Transfer the generated C and response file with the import
+                // instead of handing clang guest-only paths.
+                m_of.flush();
+                auto read_file = [](const ::std::string& path) {
+                    ::std::ifstream input(path, ::std::ios::binary);
+                    return ::std::string(
+                        (::std::istreambuf_iterator<char>(input)),
+                        ::std::istreambuf_iterator<char>());
+                };
+                const auto source_data = read_file(m_outfile_path_c);
+                const auto response_data = use_arg_file ? read_file(command_file) : ::std::string();
+                int ec = codifyone_rust_codegen(
+                    cmd_ss.str().c_str(),
+                    m_outfile_path_c.c_str(), source_data.data(), source_data.size(),
+                    use_arg_file ? command_file.c_str() : "",
+                    response_data.data(), response_data.size());
+#else
                 int ec = system(cmd_ss.str().c_str());
+#endif
                 if( ec == -1 )
                 {
                     ::std::cerr << "C Compiler failed to execute (system returned -1)" << ::std::endl;
